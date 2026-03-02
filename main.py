@@ -37,6 +37,7 @@ def process_lecture(
     date = lecture.get("date", "")
 
     print(f"\n  -- Processing: {sub_title} ({date})")
+    print(f"    [Time] Start: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     t_start = time.time()
 
     # Check existing progress for stage-skipping
@@ -46,20 +47,23 @@ def process_lecture(
 
     # 1) Transcribe (stream audio directly from CDN — no video download)
     if has_transcript:
-        print(f"    Transcript exists, skipping transcription.")
+        print(f"    Transcript exists ({len(existing['transcript'])} chars), skipping transcription.")
         transcript = existing["transcript"]
     else:
+        print(f"    [Time] Fetching video URL at {time.strftime('%H:%M:%S')}")
         video_url = client.get_video_url(course_id, sub_id)
         if not video_url:
             print(f"    No video URL for {sub_id}, skipping.")
             return None
 
         try:
-            print(f"    Streaming audio & transcribing...")
             vpn_url, http_headers = client.get_stream_params(video_url)
+            print(f"    [Time] Streaming audio at {time.strftime('%H:%M:%S')}")
+            print(f"    [URL] {vpn_url[:100]}...")
             transcript = transcriber.transcribe_url(vpn_url, http_headers=http_headers)
             db.update_transcript(sub_id, transcript)
         except Exception as e:
+            print(f"    [FAIL] Transcription error: {type(e).__name__}: {e}")
             db.update_error(sub_id, "transcribe", str(e))
             raise
 
@@ -71,21 +75,24 @@ def process_lecture(
         return None
 
     if has_summary:
-        print(f"    Summary exists, skipping summarization.")
+        print(f"    Summary exists ({len(existing['summary'])} chars), skipping summarization.")
         summary = existing["summary"]
     else:
         try:
-            print(f"    Generating summary...")
+            print(f"    [Time] Generating summary at {time.strftime('%H:%M:%S')}")
+            print(f"    Transcript length: {len(transcript)} chars")
             summary, model_used = summarizer.summarize(course_title, transcript)
+            print(f"    [OK] Summary by {model_used}: {len(summary)} chars")
             db.update_summary_with_model(sub_id, summary, model_used)
         except Exception as e:
+            print(f"    [FAIL] Summarization error: {type(e).__name__}: {e}")
             db.update_error(sub_id, "summarize", str(e))
             raise
 
     db.mark_processed(sub_id)
     db.clear_error(sub_id)
     elapsed = time.time() - t_start
-    print(f"    Done: {sub_title} (total {elapsed:.0f}s)")
+    print(f"    [Time] Done at {time.strftime('%H:%M:%S')}: {sub_title} (total {elapsed:.0f}s)")
     return summary
 
 

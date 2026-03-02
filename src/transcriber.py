@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import threading
 import time
 
 import numpy as np
@@ -78,10 +79,22 @@ class Transcriber:
         self._init()
         self._reset_vad()
         t0 = time.time()
+        print(f"[Transcriber] Starting at {time.strftime('%H:%M:%S')}", flush=True)
 
         proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
+
+        # Drain stderr in background thread to prevent pipe deadlock
+        stderr_chunks = []
+        def _drain_stderr():
+            try:
+                for line in proc.stderr:
+                    stderr_chunks.append(line)
+            except Exception:
+                pass
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
 
         sample_rate = 16000
         window_size = 512  # samples per VAD window (32ms at 16kHz)
@@ -90,10 +103,13 @@ class Transcriber:
 
         texts = []
         total_read = 0
+        total_bytes = 0
+        last_report = t0
 
         try:
             while True:
-                if time.time() - t0 > timeout:
+                now = time.time()
+                if now - t0 > timeout:
                     proc.kill()
                     proc.wait()
                     raise TimeoutError(
@@ -104,8 +120,23 @@ class Transcriber:
                 if not raw:
                     break
 
+                total_bytes += len(raw)
                 samples = np.frombuffer(raw, dtype=np.float32)
                 total_read += len(samples)
+
+                # Progress report every 60 seconds
+                if now - last_report >= 60:
+                    elapsed_so_far = now - t0
+                    audio_so_far = total_read / sample_rate
+                    speed_kbps = (total_bytes / 1024) / elapsed_so_far
+                    print(
+                        f"[Transcriber] Progress: {audio_so_far:.0f}s audio,"
+                        f" {total_bytes / 1024 / 1024:.1f} MB received,"
+                        f" {speed_kbps:.1f} KB/s,"
+                        f" {len(texts)} segments so far",
+                        flush=True,
+                    )
+                    last_report = now
 
                 # Feed samples to VAD in window-sized chunks
                 idx = 0
@@ -125,16 +156,35 @@ class Transcriber:
             if proc.poll() is None:
                 proc.kill()
             proc.wait()
-
-        if proc.returncode not in (0, -9, None):
-            raise RuntimeError(f"ffmpeg exited with code {proc.returncode}")
+            stderr_thread.join(timeout=5)
+            stderr_output = b"".join(stderr_chunks)
 
         elapsed = time.time() - t0
         duration = total_read / sample_rate
+
+        if proc.returncode not in (0, -9, None):
+            stderr_text = stderr_output.decode(errors="replace")[-500:]
+            raise RuntimeError(
+                f"ffmpeg exited with code {proc.returncode}.\n"
+                f"stderr (last 500 chars):\n{stderr_text}"
+            )
+
+        # Warn if no audio received (likely auth/network issue)
+        if total_bytes == 0:
+            stderr_text = stderr_output.decode(errors="replace")[-500:]
+            raise RuntimeError(
+                f"ffmpeg produced no audio output (0 bytes received).\n"
+                f"stderr (last 500 chars):\n{stderr_text}"
+            )
+
+        speed_kbps = (total_bytes / 1024) / elapsed if elapsed > 0 else 0
         transcript = " ".join(texts)
         print(
-            f"[Transcriber] Done: {duration:.0f}s audio, {len(transcript)} chars,"
-            f" {len(texts)} segments in {elapsed:.0f}s"
+            f"[Transcriber] Done at {time.strftime('%H:%M:%S')}:"
+            f" {duration:.0f}s audio, {total_bytes / 1024 / 1024:.1f} MB,"
+            f" avg {speed_kbps:.1f} KB/s,"
+            f" {len(transcript)} chars, {len(texts)} segments in {elapsed:.0f}s",
+            flush=True,
         )
         return transcript
 

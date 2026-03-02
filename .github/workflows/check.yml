@@ -87,7 +87,7 @@ jobs:
           SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
-        run: python main.py
+        run: python -u main.py
 
       # Encrypt and commit database only if it changed
       - name: Commit database

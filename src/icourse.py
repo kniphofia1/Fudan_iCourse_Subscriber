@@ -5,8 +5,10 @@ Provides access to course details, lecture lists, video URLs,
 and video downloads through WebVPN.
 """
 
+import functools
 import hashlib
 import os
+import threading
 import time
 import uuid
 from urllib.parse import urlparse
@@ -15,14 +17,25 @@ from . import config
 from .webvpn import WebVPNSession
 
 
+def _synchronized(method):
+    """Decorator that serializes method calls using the instance's ``_lock``."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
+
+
 class ICourseClient:
-    """Client for the iCourse API, operating through WebVPN."""
+    """Thread-safe client for the iCourse API, operating through WebVPN."""
 
     def __init__(self, vpn_session: WebVPNSession):
         self.vpn = vpn_session
         self.base_url = config.ICOURSE_BASE
         self._userinfo = None
+        self._lock = threading.RLock()
 
+    @_synchronized
     def get_userinfo(self) -> dict:
         """Get current user info (id, tenant_id, phone, account).
 
@@ -42,6 +55,7 @@ class ICourseClient:
         self._userinfo = data.get("params") or data.get("data", {})
         return self._userinfo
 
+    @_synchronized
     def check_alive(self) -> bool:
         """Quick session health check (non-cached)."""
         try:
@@ -52,6 +66,7 @@ class ICourseClient:
         except Exception:
             return False
 
+    @_synchronized
     def sign_video_url(
         self, video_url: str, now: int | None = None
     ) -> str:
@@ -80,6 +95,7 @@ class ICourseClient:
         sep = "&" if "?" in video_url else "?"
         return f"{video_url}{sep}clientUUID={client_uuid}&t={t_param}"
 
+    @_synchronized
     def get_course_detail(self, course_id: str) -> dict:
         """Get course details including title, teacher, and lecture list.
 
@@ -122,6 +138,7 @@ class ICourseClient:
 
         return {"title": title, "teacher": teacher, "lectures": lectures}
 
+    @_synchronized
     def get_course_list(
         self, term: str = "24", page: int = 1, per_page: int = 20
     ) -> dict:
@@ -153,6 +170,7 @@ class ICourseClient:
             "courses": result.get("list", []),
         }
 
+    @_synchronized
     def get_lecture_detail(self, course_id: str, sub_id: str) -> dict:
         """Get details for a specific lecture, including video URL info.
 
@@ -168,6 +186,7 @@ class ICourseClient:
             f"Lecture {sub_id} not found in course {course_id}"
         )
 
+    @_synchronized
     def get_transcript(self, sub_id: str) -> str | None:
         """Get the transcript text for a lecture.
 
@@ -197,6 +216,7 @@ class ICourseClient:
             seg.get("Text", "") for seg in all_content if seg.get("Text")
         )
 
+    @_synchronized
     def get_sub_detail(self, course_id: str, sub_id: str) -> dict:
         """Get detailed info for a specific lecture (unsigned URL).
 
@@ -218,6 +238,7 @@ class ICourseClient:
 
         return data.get("data", {})
 
+    @_synchronized
     def get_sub_info(self, course_id: str, sub_id: str) -> dict:
         """Get lecture info including video URLs and timestamp.
 
@@ -242,6 +263,7 @@ class ICourseClient:
 
         return data.get("data", {})
 
+    @_synchronized
     def get_video_url(self, course_id: str, sub_id: str) -> str | None:
         """Get a signed MP4 video URL for a specific lecture.
 
@@ -302,6 +324,7 @@ class ICourseClient:
 
         return self.sign_video_url(base_url, now=now)
 
+    @_synchronized
     def get_stream_params(self, video_url: str) -> tuple[str, str]:
         """Get WebVPN URL and HTTP headers for direct streaming (e.g., ffmpeg).
 
@@ -316,6 +339,7 @@ class ICourseClient:
         headers = f"Cookie: {cookies}\r\nUser-Agent: {config.USER_AGENT}\r\n"
         return vpn_url, headers
 
+    @_synchronized
     def download_video(
         self,
         video_url: str,

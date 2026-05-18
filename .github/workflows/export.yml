@@ -12,6 +12,11 @@ on:
         required: false
         type: boolean
         default: false
+      sub_ids:
+        description: "Optional comma-separated lecture sub_ids to filter (default: all summarized lectures)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -47,12 +52,14 @@ jobs:
       - name: Fetch database from data branch
         run: |
           mkdir -p data
-          curl -fL -o data/icourse.db.enc.tmp \
-            "https://raw.githubusercontent.com/${{ github.repository }}/data/data/icourse.db.enc" \
-            || echo "Fetch from data branch failed."
-          if [ -f data/icourse.db.enc.tmp ]; then
+          if curl -fL -o data/icourse.db.gz.enc.tmp \
+               "https://raw.githubusercontent.com/${{ github.repository }}/data/data/icourse.db.gz.enc" 2>/dev/null; then
+            mv data/icourse.db.gz.enc.tmp data/icourse.db.gz.enc
+            echo "Loaded compressed database."
+          elif curl -fL -o data/icourse.db.enc.tmp \
+               "https://raw.githubusercontent.com/${{ github.repository }}/data/data/icourse.db.enc" 2>/dev/null; then
             mv data/icourse.db.enc.tmp data/icourse.db.enc
-            echo "Database loaded from data branch."
+            echo "Loaded legacy database."
           else
             echo "::error::No database found on data branch."
             exit 1
@@ -62,9 +69,14 @@ jobs:
         env:
           DB_KEY: ${{ secrets.STUID }}${{ secrets.UISPSW }}${{ secrets.DASHSCOPE_API_KEY }}${{ secrets.SMTP_PASSWORD }}
         run: |
-          openssl enc -aes-256-cbc -d -pbkdf2 \
-            -in data/icourse.db.enc -out data/icourse.db \
-            -pass env:DB_KEY
+          if [ -f data/icourse.db.gz.enc ]; then
+            openssl enc -aes-256-cbc -d -pbkdf2 \
+              -in data/icourse.db.gz.enc -out data/icourse.db.gz -pass env:DB_KEY
+            gzip -d data/icourse.db.gz
+          else
+            openssl enc -aes-256-cbc -d -pbkdf2 \
+              -in data/icourse.db.enc -out data/icourse.db -pass env:DB_KEY
+          fi
           echo "Database decrypted."
 
       - name: Export course summaries
@@ -73,9 +85,14 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
           EXPORT_COURSE_ID: ${{ inputs.course_id }}
+          EXPORT_SUB_IDS: ${{ inputs.sub_ids }}
         run: |
+          PDF_FLAG=""
           if [ "${{ inputs.export_pdf }}" = "true" ]; then
-            python scripts/export_course.py --course-id "$EXPORT_COURSE_ID" --pdf
+            PDF_FLAG="--pdf"
+          fi
+          if [ -n "$EXPORT_SUB_IDS" ]; then
+            python scripts/export_course.py --course-id "$EXPORT_COURSE_ID" --sub-ids "$EXPORT_SUB_IDS" $PDF_FLAG
           else
-            python scripts/export_course.py --course-id "$EXPORT_COURSE_ID"
+            python scripts/export_course.py --course-id "$EXPORT_COURSE_ID" $PDF_FLAG
           fi

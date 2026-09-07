@@ -123,7 +123,11 @@ class ICourseClient:
         return {"title": title, "teacher": teacher, "lectures": lectures}
 
     def get_course_list(
-        self, term: str = "24", page: int = 1, per_page: int = 20
+        self,
+        term: str = "24",
+        page: int = 1,
+        per_page: int = 20,
+        title: str = "",
     ) -> dict:
         """Get a paginated list of courses for a given term.
 
@@ -132,7 +136,7 @@ class ICourseClient:
         url = f"{self.base_url}/portal/courseapi/v3/multi-search/get-course-list"
         params = {
             "tenant": config.TENANT_CODE,
-            "title": "",
+            "title": title,
             "term": term,
             "kkxy_code": "",
             "course_type": "",
@@ -140,7 +144,7 @@ class ICourseClient:
             "page": page,
             "per_page": per_page,
         }
-        resp = self.vpn.get(url, params=params)
+        resp = self.vpn.get(url, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 

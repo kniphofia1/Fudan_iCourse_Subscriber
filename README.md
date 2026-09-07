@@ -93,6 +93,11 @@
 
 ## 本地运行（Linux环境）
 
+飞牛 NAS 的按学期自动发现、Docker 定时运行和 Markdown 导出说明见
+[`docs/nas-deployment.md`](docs/nas-deployment.md)。该模式从 Canvas 的无凭据
+课程清单中安全匹配 iCourse 课程，并将完整转写和 AI 摘要写入每门课的
+`录课转写/` 子目录；原有 `COURSE_IDS` 显式配置仍保持兼容。
+
 > 本地运行方式未经测试，建议使用github actions方式部署。
 
 ```bash

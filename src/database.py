@@ -49,6 +49,8 @@ class Database:
                 ("error_count", "INTEGER DEFAULT 0"),
                 ("error_stage", "TEXT"),
                 ("summary_model", "TEXT"),
+                ("exported_at", "TEXT"),
+                ("export_path", "TEXT"),
             ]:
                 if col not in existing:
                     self.conn.execute(f"ALTER TABLE lectures ADD COLUMN {col} {typedef}")
@@ -181,3 +183,28 @@ class Database:
                  AND l.summary IS NOT NULL""",
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_unexported_summaries(self) -> list[dict]:
+        """Return processed summaries that have not been written to Markdown."""
+
+        rows = self.conn.execute(
+            """SELECT l.*, c.title AS course_title, c.teacher
+               FROM lectures l
+               JOIN courses c ON l.course_id = c.course_id
+               WHERE l.processed_at IS NOT NULL
+                 AND l.summary IS NOT NULL
+                 AND l.exported_at IS NULL
+               ORDER BY c.course_id, l.date, l.sub_id"""
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def mark_exported(self, sub_id: str, export_path: str):
+        """Record the successful Markdown destination for one lecture."""
+
+        with self.conn:
+            self.conn.execute(
+                """UPDATE lectures
+                   SET exported_at = ?, export_path = ?
+                   WHERE sub_id = ?""",
+                (datetime.now().isoformat(), export_path, sub_id),
+            )

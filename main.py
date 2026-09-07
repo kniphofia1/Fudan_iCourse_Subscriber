@@ -8,9 +8,15 @@ import time
 import traceback
 
 from src import config
+from src.course_discovery import (
+    CourseDiscoveryError,
+    CourseManifestPending,
+    discover_courses,
+)
 from src.database import Database
 from src.emailer import Emailer
 from src.icourse import ICourseClient
+from src.markdown_exporter import MarkdownExporter
 from src.summarizer import Summarizer
 from src.transcriber import IncompleteAudioError, NoAudioStreamError, Transcriber
 from src.webvpn import WebVPNSession
@@ -58,8 +64,6 @@ def process_lecture(
 
         vpn_url, http_headers = client.get_stream_params(video_url)
         print(f"    [Time] Streaming audio at {time.strftime('%H:%M:%S')}")
-        print(f"    [URL] {vpn_url[:100]}...")
-
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
             try:
@@ -147,26 +151,71 @@ def _check_session(client: ICourseClient) -> ICourseClient:
     return ICourseClient(vpn)
 
 
+def resolve_course_selection(
+    client: ICourseClient,
+) -> tuple[list[str], dict[str, str]]:
+    """Resolve explicit IDs or the safe Canvas-manifest course selection."""
+
+    if config.COURSE_DISCOVERY_MODE == "explicit":
+        if not config.COURSE_IDS:
+            raise CourseDiscoveryError(
+                "No COURSE_IDS configured. Set COURSE_IDS or enable manifest mode."
+            )
+        return config.COURSE_IDS, {}
+
+    if config.COURSE_DISCOVERY_MODE != "manifest":
+        raise CourseDiscoveryError(
+            f"Unsupported COURSE_DISCOVERY_MODE={config.COURSE_DISCOVERY_MODE!r}"
+        )
+
+    resolved, diagnostics = discover_courses(
+        client,
+        config.COURSE_MANIFEST_PATH,
+        config.ICOURSE_TERM_ID,
+        config.COURSE_MAP_PATH,
+    )
+    print("[Discovery] Canvas → iCourse course mapping:")
+    for message in diagnostics:
+        print(f"  - {message}")
+    return (
+        [item.icourse_id for item in resolved],
+        {item.icourse_id: item.directory_name for item in resolved},
+    )
+
+
 def run():
     """Single execution of the full pipeline."""
     print("=" * 60)
     print("iCourse Subscriber — starting run")
     print("=" * 60)
 
-    if not config.COURSE_IDS:
-        print("No COURSE_IDS configured. Set the COURSE_IDS env var.")
+    vpn = login_with_retry()
+    client = ICourseClient(vpn)
+    try:
+        course_ids, course_directory_map = resolve_course_selection(client)
+    except CourseManifestPending as exc:
+        print(f"[Discovery] Pending: {exc}")
+        return
+    except CourseDiscoveryError as exc:
+        print(f"[Discovery] Configuration error: {exc}")
+        return
+
+    if not course_ids:
+        print("[Discovery] No uniquely matched iCourse courses yet; pending.")
         return
 
     db = Database()
     transcriber = Transcriber()
     summarizer = Summarizer()
     emailer = Emailer() if config.SMTP_EMAIL and config.SMTP_PASSWORD else None
-
-    vpn = login_with_retry()
-    client = ICourseClient(vpn)
+    exporter = (
+        MarkdownExporter(course_directory_map=course_directory_map)
+        if config.MARKDOWN_EXPORT_ENABLED
+        else None
+    )
     email_items = []
 
-    for course_id in config.COURSE_IDS:
+    for course_id in course_ids:
         try:
             print(f"\n{'─' * 50}")
             print(f"[Course] {course_id}")
@@ -249,6 +298,19 @@ def run():
         except Exception:
             print(f"  ERROR processing course {course_id}:")
             traceback.print_exc()
+
+    if exporter:
+        export_items = db.get_unexported_summaries()
+        if export_items:
+            print(f"\n[Markdown] Exporting {len(export_items)} lecture file(s)...")
+        for item in export_items:
+            try:
+                export_path = exporter.export_item(item)
+                db.mark_exported(item["sub_id"], export_path)
+                print(f"[Markdown] Exported: {export_path}")
+            except Exception:
+                print(f"[Markdown] Failed to export {item['sub_id']}:")
+                traceback.print_exc()
 
     # Recover any previously processed-but-unsent lectures
     unsent = db.get_unsent_lectures()

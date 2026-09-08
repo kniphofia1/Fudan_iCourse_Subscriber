@@ -29,3 +29,13 @@ docker compose up -d --build
 失败时最多重试三次。目标 Canvas 清单尚未
 生成、课程没有 iCourse 录播，或课程匹配不唯一时，任务会记录原因并安全跳过。
 也可设置 `RUN_MODE=once` 后运行一次性容器进行预检。
+
+## Canvas 尚未发布但 iCourse 已有录播
+
+可在 NAS 私有数据目录保存用户明确确认的 iCourse 名单，并设置
+`CONFIRMED_COURSES_PATH=/app/data/confirmed-courses.json`。
+仅当 Canvas manifest 尚不存在时使用；不伪造 Canvas ID 或 Term ID。
+名单须包含 `schema_version: 1`、与配置一致的 `term_id` 以及 `courses` 数组。
+每项包含 `icourse_id`、`course_code`、`name`、`teachers`。
+执行前核对课程名称和教师；仍只处理平台已开放回放的课次。
+Canvas 清单生成后恢复原有 manifest 自动发现流程，沿用同一数据库去重。

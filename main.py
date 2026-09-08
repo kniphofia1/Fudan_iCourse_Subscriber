@@ -8,6 +8,7 @@ import time
 import traceback
 
 from src import config
+from src.confirmed_courses import load_confirmed_courses
 from src.course_discovery import (
     CourseDiscoveryError,
     CourseManifestPending,
@@ -168,12 +169,21 @@ def resolve_course_selection(
             f"Unsupported COURSE_DISCOVERY_MODE={config.COURSE_DISCOVERY_MODE!r}"
         )
 
-    resolved, diagnostics = discover_courses(
-        client,
-        config.COURSE_MANIFEST_PATH,
-        config.ICOURSE_TERM_ID,
-        config.COURSE_MAP_PATH,
-    )
+    try:
+        resolved, diagnostics = discover_courses(
+            client,
+            config.COURSE_MANIFEST_PATH,
+            config.ICOURSE_TERM_ID,
+            config.COURSE_MAP_PATH,
+        )
+    except CourseManifestPending:
+        if not config.CONFIRMED_COURSES_PATH:
+            raise
+        selection = load_confirmed_courses(
+            config.CONFIRMED_COURSES_PATH, config.ICOURSE_TERM_ID, client
+        )
+        print("[Discovery] Canvas pending; using user-confirmed iCourse roster.")
+        return selection
     print("[Discovery] Canvas → iCourse course mapping:")
     for message in diagnostics:
         print(f"  - {message}")

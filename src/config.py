@@ -109,3 +109,4 @@ COURSE_MANIFEST_PATH = os.environ.get(
 COURSE_MAP_PATH = os.environ.get(
     "COURSE_MAP_PATH", os.path.join(DATA_DIR, "course-map.json")
 )
+CONFIRMED_COURSES_PATH = os.environ.get("CONFIRMED_COURSES_PATH", "")

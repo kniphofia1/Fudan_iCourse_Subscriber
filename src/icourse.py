@@ -7,8 +7,10 @@ and video downloads through WebVPN.
 
 import hashlib
 import os
+import re
 import time
 import uuid
+from datetime import date
 from urllib.parse import urlparse
 
 from . import config
@@ -108,6 +110,16 @@ class ICourseClient:
                 for day, items in days.items():
                     for item in items:
                         if "id" in item:
+                            # The outer sub_list groups are year/month/week,
+                            # not a calendar date. The lecture title supplies
+                            # the actual date (e.g. 2026-09-07第3-5节).
+                            match = re.search(r"\d{4}-\d{2}-\d{2}", str(item.get("sub_title", "")))
+                            lecture_date = ""
+                            if match:
+                                try:
+                                    lecture_date = date.fromisoformat(match.group()).isoformat()
+                                except ValueError:
+                                    pass
                             lectures.append(
                                 {
                                     "sub_id": item["id"],
@@ -115,7 +127,7 @@ class ICourseClient:
                                     "lecturer_name": item.get(
                                         "lecturer_name", ""
                                     ),
-                                    "date": f"{year}-{month}-{day}",
+                                    "date": lecture_date,
                                     "has_playback": str(item.get("playback_status")) == "1",
                                 }
                             )

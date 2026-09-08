@@ -7,12 +7,27 @@ and video downloads through WebVPN.
 
 import hashlib
 import os
+import re
 import time
 import uuid
+from datetime import date
 from urllib.parse import urlparse
 
 from . import config
 from .webvpn import WebVPNSession
+
+
+def playback_is_released(item: dict, now: float | None = None) -> bool:
+    """Recorded media can exist before the platform's delayed release time."""
+    if str(item.get("playback_status")) != "1" or item.get("show") == "no":
+        return False
+    now = time.time() if now is None else now
+    try:
+        release = max(float(item.get("sub_delayed_release") or 0), float(item.get("open_at") or 0))
+        deadline = float(item.get("deadline_at") or 0)
+    except (TypeError, ValueError):
+        return False
+    return now >= release and (deadline <= 0 or now < deadline)
 
 
 class ICourseClient:
@@ -108,6 +123,16 @@ class ICourseClient:
                 for day, items in days.items():
                     for item in items:
                         if "id" in item:
+                            # The outer sub_list groups are year/month/week,
+                            # not a calendar date. The lecture title supplies
+                            # the actual date (e.g. 2026-09-07第3-5节).
+                            match = re.search(r"\d{4}-\d{2}-\d{2}", str(item.get("sub_title", "")))
+                            lecture_date = ""
+                            if match:
+                                try:
+                                    lecture_date = date.fromisoformat(match.group()).isoformat()
+                                except ValueError:
+                                    pass
                             lectures.append(
                                 {
                                     "sub_id": item["id"],
@@ -115,15 +140,19 @@ class ICourseClient:
                                     "lecturer_name": item.get(
                                         "lecturer_name", ""
                                     ),
-                                    "date": f"{year}-{month}-{day}",
-                                    "has_playback": str(item.get("playback_status")) == "1",
+                                    "date": lecture_date,
+                                    "has_playback": playback_is_released(item),
                                 }
                             )
 
         return {"title": title, "teacher": teacher, "lectures": lectures}
 
     def get_course_list(
-        self, term: str = "24", page: int = 1, per_page: int = 20
+        self,
+        term: str = "24",
+        page: int = 1,
+        per_page: int = 20,
+        title: str = "",
     ) -> dict:
         """Get a paginated list of courses for a given term.
 
@@ -132,7 +161,7 @@ class ICourseClient:
         url = f"{self.base_url}/portal/courseapi/v3/multi-search/get-course-list"
         params = {
             "tenant": config.TENANT_CODE,
-            "title": "",
+            "title": title,
             "term": term,
             "kkxy_code": "",
             "course_type": "",
@@ -140,7 +169,7 @@ class ICourseClient:
             "page": page,
             "per_page": per_page,
         }
-        resp = self.vpn.get(url, params=params)
+        resp = self.vpn.get(url, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 

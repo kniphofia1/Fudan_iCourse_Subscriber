@@ -1,0 +1,12 @@
+.git
+.github
+.env
+.env.*
+!.env.nas.example
+data
+models
+exports
+canvas-state
+__pycache__
+*.pyc
+*.log

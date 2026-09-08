@@ -1,0 +1,45 @@
+name: fudan_icourse_subscriber
+
+services:
+  icourse-subscriber:
+    build: .
+    container_name: icourse-subscriber
+    restart: unless-stopped
+    env_file:
+      - path: .env.nas
+        required: false
+    environment:
+      TZ: Asia/Shanghai
+      STUID_FILE: /run/secrets/fudan_username
+      UISPSW_FILE: /run/secrets/fudan_password
+      DATA_DIR: /app/data
+      DB_PATH: /app/data/icourse.db
+      RUN_LOCK_PATH: /app/data/.scheduler.lock
+      RUN_RETRIES: "3"
+      RETRY_DELAY_SECONDS: "60"
+      COURSE_DISCOVERY_MODE: manifest
+      ICOURSE_TERM_ID: "27"
+      COURSE_MANIFEST_PATH: /app/canvas-state/2026-fall-courses.json
+      COURSE_MAP_PATH: /app/data/course-map.json
+      EXPORT_DIR: /app/exports
+      MARKDOWN_EXPORT_ENABLED: "true"
+      EXPORT_TRANSCRIPT: "true"
+      EXPORT_USE_EXISTING_COURSE_DIRS: "true"
+      EXPORT_COURSE_SUBDIR: 录课转写
+      SENSEVOICE_MODEL_DIR: /app/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
+      SENSEVOICE_LANGUAGE: zh
+      SILERO_VAD_PATH: /app/models/silero_vad.onnx
+    volumes:
+      - ./data/2026-fall:/app/data
+      - /vol3/1000/kniplab/26-27秋学期:/app/exports
+      - ./models:/app/models
+      - /vol1/1000/Docker/Fudan_canvasdownloader/.state:/app/canvas-state:ro
+    secrets:
+      - fudan_username
+      - fudan_password
+
+secrets:
+  fudan_username:
+    file: /vol1/1000/Docker/Fudan_canvasdownloader/secrets/fudan_username
+  fudan_password:
+    file: /vol1/1000/Docker/Fudan_canvasdownloader/secrets/fudan_password

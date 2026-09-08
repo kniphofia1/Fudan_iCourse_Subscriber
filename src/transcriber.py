@@ -39,10 +39,11 @@ class Transcriber:
                     f"Download from https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models"
                 )
 
-        print("[Transcriber] Loading SenseVoice model...")
+        print(f"[Transcriber] Loading SenseVoice model (language={config.SENSEVOICE_LANGUAGE})...")
         self._recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
             model=model_path,
             tokens=tokens_path,
+            language=config.SENSEVOICE_LANGUAGE,
             use_itn=True,
             num_threads=2,
             debug=False,

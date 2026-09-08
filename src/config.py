@@ -85,6 +85,9 @@ EXPORT_USE_EXISTING_COURSE_DIRS = _env_bool(
 EXPORT_COURSE_SUBDIR = os.environ.get("EXPORT_COURSE_SUBDIR", "")
 
 # SenseVoice STT (sherpa-onnx)
+SENSEVOICE_LANGUAGE = os.environ.get("SENSEVOICE_LANGUAGE", "auto").strip().lower()
+if SENSEVOICE_LANGUAGE not in {"auto", "zh", "en", "yue", "ja", "ko"}:
+    raise ValueError("SENSEVOICE_LANGUAGE must be auto, zh, en, yue, ja, or ko")
 SENSEVOICE_MODEL_DIR = os.environ.get(
     "SENSEVOICE_MODEL_DIR",
     "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",

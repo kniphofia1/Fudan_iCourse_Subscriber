@@ -27,6 +27,7 @@ services:
       EXPORT_USE_EXISTING_COURSE_DIRS: "true"
       EXPORT_COURSE_SUBDIR: 录课转写
       SENSEVOICE_MODEL_DIR: /app/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
+      SENSEVOICE_LANGUAGE: zh
       SILERO_VAD_PATH: /app/models/silero_vad.onnx
     volumes:
       - ./data/2026-fall:/app/data

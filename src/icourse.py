@@ -17,6 +17,19 @@ from . import config
 from .webvpn import WebVPNSession
 
 
+def playback_is_released(item: dict, now: float | None = None) -> bool:
+    """Recorded media can exist before the platform's delayed release time."""
+    if str(item.get("playback_status")) != "1" or item.get("show") == "no":
+        return False
+    now = time.time() if now is None else now
+    try:
+        release = max(float(item.get("sub_delayed_release") or 0), float(item.get("open_at") or 0))
+        deadline = float(item.get("deadline_at") or 0)
+    except (TypeError, ValueError):
+        return False
+    return now >= release and (deadline <= 0 or now < deadline)
+
+
 class ICourseClient:
     """Client for the iCourse API, operating through WebVPN."""
 
@@ -128,7 +141,7 @@ class ICourseClient:
                                         "lecturer_name", ""
                                     ),
                                     "date": lecture_date,
-                                    "has_playback": str(item.get("playback_status")) == "1",
+                                    "has_playback": playback_is_released(item),
                                 }
                             )
 

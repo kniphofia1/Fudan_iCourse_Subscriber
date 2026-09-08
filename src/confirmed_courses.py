@@ -30,7 +30,8 @@ def load_confirmed_courses(path, term_id, client):
             raise CourseDiscoveryError("Confirmed course title no longer matches its ID")
         teachers = course.get("teachers") or []
         actual = normalize_text(detail.get("teacher"))
-        if not teachers or not all(normalize_text(teacher) and normalize_text(teacher) in actual for teacher in teachers):
+        # The API may return only the current lecturer for a co-taught course.
+        if not teachers or not any(normalize_text(teacher) and normalize_text(teacher) in actual for teacher in teachers):
             raise CourseDiscoveryError("Confirmed course teacher no longer matches its ID")
         ids.append(course_id)
         directories[course_id] = directory

@@ -34,8 +34,9 @@ docker compose up -d --build
 
 可在 NAS 私有数据目录保存用户明确确认的 iCourse 名单，并设置
 `CONFIRMED_COURSES_PATH=/app/data/confirmed-courses.json`。
-仅当 Canvas manifest 尚不存在时使用；不伪造 Canvas ID 或 Term ID。
+Canvas manifest 尚不存在时使用确认名单；清单部分发布后合并两者，
+避免尚未发布的已确认课程被漏掉。不伪造 Canvas ID 或 Term ID。
 名单须包含 `schema_version: 1`、与配置一致的 `term_id` 以及 `courses` 数组。
 每项包含 `icourse_id`、`course_code`、`name`、`teachers`。
 执行前核对课程名称和教师；仍只处理平台已开放回放的课次。
-Canvas 清单生成后恢复原有 manifest 自动发现流程，沿用同一数据库去重。
+Canvas 清单生成后继续自动发现其他课程，沿用同一数据库按 iCourse ID 去重。

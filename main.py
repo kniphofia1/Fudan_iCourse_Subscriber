@@ -187,10 +187,19 @@ def resolve_course_selection(
     print("[Discovery] Canvas → iCourse course mapping:")
     for message in diagnostics:
         print(f"  - {message}")
-    return (
-        [item.icourse_id for item in resolved],
-        {item.icourse_id: item.directory_name for item in resolved},
-    )
+    ids = [item.icourse_id for item in resolved]
+    directories = {item.icourse_id: item.directory_name for item in resolved}
+    # Canvas courses can be published one at a time. Do not drop confirmed
+    # courses merely because the first partial Canvas manifest appeared.
+    if config.CONFIRMED_COURSES_PATH:
+        confirmed_ids, confirmed_dirs = load_confirmed_courses(
+            config.CONFIRMED_COURSES_PATH, config.ICOURSE_TERM_ID, client
+        )
+        for course_id in confirmed_ids:
+            if course_id not in ids:
+                ids.append(course_id)
+            directories.setdefault(course_id, confirmed_dirs[course_id])
+    return ids, directories
 
 
 def run():
